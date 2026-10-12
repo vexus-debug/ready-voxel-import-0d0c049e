@@ -10,13 +10,13 @@ import * as THREE from "three";
 import { getGame } from "./state";
 import { K_CX, K_CZ, hash2 } from "./world";
 
-const N_PEOPLE = 160, N_CARTS = 18;
+const N_PEOPLE = 360, N_CARTS = 18;
 // role: [shirt, legs, hat|null, speed, label]
 const ROLES = [
   ["#7a3b22", "#3a2a1c", null, 0.0], // blacksmith (apron)
   ["#c9b48a", "#5a4632", "#e8e2d0", 0.0], // baker (white cap)
   ["#2f4f7f", "#3b3b3b", "#8a1c1c", 0.0], // merchant
-  ["#6b6e72", "#4a4a4a", "#9aa0a6", 0.6], // guard (steel)
+  ["#9a1f1f", "#4a4a4a", "#9aa0a6", 0.9], // guard (red tabard, steel helm)
   ["#1d1d1d", "#1d1d1d", null, 0.5], // priest
   ["#6f7d3a", "#5a4a2a", "#c8a25a", 0.0], // farmer (straw hat)
   ["#8e5a7a", "#6a3e58", null, 1.1], // townswoman
@@ -83,9 +83,12 @@ export function Population() {
     for (const [u, v] of FARMS) for (let i = 0; i < 2; i++) add(5, u - 3 + rand() * 6, v - 3 + rand() * 6, 1, 5);
     for (let i = 0; i < 3; i++) add(4, 9 + i, 45, 1, 3); // priest & acolytes
     for (const d of [-1, 1]) for (const s of [-1, 1]) { add(3, d * 97, s * 2.5, 2); add(3, s * 2.5, d * 97, 2); } // gate sentries
-    for (const d of [-1, 1]) { add(3, d * 22 + d * 2, -4, 2); add(3, d * 22 + d * 2, 4, 2); } // citadel gates
+    for (const d of [-1, 1]) { add(3, d * 22 + d * 2, -4, 2); add(3, d * 22 + d * 2, 4, 2); add(3, -4, d * 24, 2); add(3, 4, d * 24, 2); } // citadel gates
+    for (const d of [-1, 1]) for (let k = -3; k <= 3; k++) { add(3, d * 92, k * 26, 1, 4); add(3, k * 26, d * 92, 1, 4); } // wall watch
+    for (let k = 0; k < 30; k++) { const [a, b] = node(); add(3, a, b, 0); } // street patrols
+    for (const [u, v] of STALLS) for (let k = 0; k < 8; k++) add(pick([6, 7, 8, 9]), u, v, 1, 8); // market crowd
     while (people.length < N_PEOPLE) {
-      const k = rand() < 0.12 ? 3 : pick([6, 7, 6, 7, 8, 9, 6, 7]);
+      const k = rand() < 0.08 ? 3 : pick([6, 7, 6, 7, 8, 9, 6, 7]);
       const [a, b] = node();
       add(k, a, b, 0);
     }
@@ -105,24 +108,24 @@ export function Population() {
     const mk = (n, w, h, d, y = 0) => { const geo = new THREE.BoxGeometry(w, h, d); geo.translate(0, y, 0); return inst(geo, n); };
     const P = people.length, A = animals.length, C = carts.length;
     // Shaped humanoid parts (inspired by the uploaded models)
-    const leg = new THREE.CapsuleGeometry(0.08, 0.6, 4, 8); leg.translate(0, -0.37, 0);
+    const leg = new THREE.CapsuleGeometry(0.08, 0.6, 2, 6); leg.translate(0, -0.37, 0);
     const torso = new THREE.CylinderGeometry(0.23, 0.17, 0.64, 10); torso.scale(1, 1, 0.62);
     const shoulders = new THREE.SphereGeometry(0.23, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); shoulders.scale(1, 0.35, 0.62); shoulders.translate(0, 0.32, 0);
     const torsoG = mergeGeometries([torso.toNonIndexed(), shoulders.toNonIndexed()]);
-    const arm = new THREE.CapsuleGeometry(0.06, 0.48, 4, 8); arm.translate(0, -0.3, 0);
-    const hand = new THREE.SphereGeometry(0.065, 8, 6); hand.translate(0, -0.6, 0);
+    const arm = new THREE.CapsuleGeometry(0.06, 0.48, 2, 6); arm.translate(0, -0.3, 0);
+    const hand = new THREE.SphereGeometry(0.065, 5, 4); hand.translate(0, -0.6, 0);
     const boot = new THREE.BoxGeometry(0.17, 0.12, 0.28); boot.translate(0, -0.7, 0.04);
-    const head = new THREE.SphereGeometry(0.155, 14, 12); head.scale(0.95, 1.1, 1);
+    const head = new THREE.SphereGeometry(0.155, 10, 8); head.scale(0.95, 1.1, 1);
     const neck = new THREE.CylinderGeometry(0.06, 0.07, 0.12, 8); neck.translate(0, -0.18, 0);
     const headG = mergeGeometries([head.toNonIndexed(), neck.toNonIndexed()]);
-    const eyeL = new THREE.SphereGeometry(0.024, 6, 5); eyeL.translate(-0.055, 0.02, 0.14);
-    const eyeR = new THREE.SphereGeometry(0.024, 6, 5); eyeR.translate(0.055, 0.02, 0.14);
+    const eyeL = new THREE.SphereGeometry(0.024, 4, 3); eyeL.translate(-0.055, 0.02, 0.14);
+    const eyeR = new THREE.SphereGeometry(0.024, 4, 3); eyeR.translate(0.055, 0.02, 0.14);
     const browL = new THREE.BoxGeometry(0.06, 0.012, 0.02); browL.translate(-0.055, 0.065, 0.145);
     const browR = new THREE.BoxGeometry(0.06, 0.012, 0.02); browR.translate(0.055, 0.065, 0.145);
     const mouth = new THREE.BoxGeometry(0.06, 0.012, 0.02); mouth.translate(0, -0.075, 0.14);
     const face = mergeGeometries([eyeL, eyeR, browL, browR, mouth].map((x) => x.toNonIndexed()));
     const nose = new THREE.ConeGeometry(0.025, 0.06, 6); nose.rotateX(Math.PI / 2); nose.translate(0, -0.02, 0.165);
-    const hair = new THREE.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5); hair.scale(0.98, 1.05, 1.05); hair.translate(0, 0.025, -0.012);
+    const hair = new THREE.SphereGeometry(0.17, 10, 5, 0, Math.PI * 2, 0, Math.PI * 0.5); hair.scale(0.98, 1.05, 1.05); hair.translate(0, 0.025, -0.012);
     const hairLong = new THREE.CylinderGeometry(0.15, 0.17, 0.38, 10, 1, true, Math.PI / 2, Math.PI); hairLong.translate(0, -0.12, -0.02);
     const skirt = new THREE.CylinderGeometry(0.19, 0.33, 0.6, 12); skirt.translate(0, -0.3, 0);
     const belt = new THREE.CylinderGeometry(0.18, 0.18, 0.06, 10); belt.scale(1, 1, 0.65);
