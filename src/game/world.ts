@@ -312,7 +312,9 @@ export class World {
           const wet = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => this.height(wx + dx, wz + dz) < WATER_LEVEL);
           if (wet && rr < 0.4) { c[idx(x, h + 1, z)] = B.REED; continue; }
         }
-        if (top === B.GRASS) {
+        if (top === B.GRASS && this.kingdomDist(wx, wz) <= K_HALF) {
+          // inside the walls: tidy lawns, no wild grass/flowers (farms are stamped by the town)
+        } else if (top === B.GRASS) {
           const meadow = fbm(wx / 28, wz / 28, this.seed + 81, 3);
           const dens = meadow > 0.55 ? 0.8 : meadow > 0.45 ? 0.25 : 0.04;
           if (rr < dens) c[idx(x, h + 1, z)] = B.TALLGRASS;
