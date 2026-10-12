@@ -126,6 +126,17 @@ export function Population() {
     carts.forEach((ct, i) => { parts.bed.setColorAt(i, c.set("#7a5634")); parts.load.setColorAt(i, c.set(["#c8a25a", "#8a6a3a", "#e0d8c0"][ct.kind])); parts.wheel.setColorAt(i * 2, c.set("#3a2a1c")); parts.wheel.setColorAt(i * 2 + 1, c.set("#3a2a1c")); });
   }, []);
 
+  const BODY_RANGE = 48;
+  const bodyMeshes = useMemo(() => {
+    if (!bodies) return null;
+    return bodies.map((geo) => {
+      const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), people.length);
+      m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0;
+      m.setColorAt(0, new THREE.Color()); return m;
+    });
+  }, [bodies]);
+  const tint = useMemo(() => new THREE.Color(), []);
+
   const o = useMemo(() => new THREE.Object3D(), []);
   const q = useMemo(() => new THREE.Object3D(), []);
   const t = useRef(0);
@@ -156,7 +167,27 @@ export function Population() {
   useFrame((_, raw) => {
     const dt = Math.min(raw, 0.05); t.current += dt;
     const px = g.pos.x - K_CX, pz = g.pos.z - K_CZ;
+    const cnt = [0, 0];
     people.forEach((p, i) => {
+      if (bodyMeshes) {
+        const nearB = Math.abs(p.x - px) < 70 && Math.abs(p.z - pz) < 70;
+        const mv = nearB && p.mode !== 2 ? steer(p, dt, p.mode === 0 ? 1 : 0) : false;
+        if (p.mode === 1 && p.sp === 0) p.sp = 0.5;
+        const ph = t.current * 7 * (p.sp / 1.1 + 0.3) + p.phase;
+        const bob = mv ? Math.abs(Math.sin(ph)) * 0.06 : Math.sin(t.current * 1.6 + p.phase) * 0.01;
+        const sway = mv ? Math.sin(ph) * 0.06 : p.kind <= 1 ? Math.max(0, Math.sin(t.current * 4 + p.phase)) * 0.12 : 0;
+        const s = p.s;
+        // hat (all roles that wear one)
+        if (ROLES[p.kind][2] && Math.hypot(p.x - px, p.z - pz) < BODY_RANGE) { o.position.set(K_CX + p.x, Y + (1.78 + bob) * s, K_CZ + p.z); o.rotation.set(0, p.yaw, 0); o.scale.set(s * 0.75, s, s * 0.75); }
+        else o.scale.setScalar(0);
+        o.updateMatrix(); parts.hat.setMatrixAt(i, o.matrix);
+        if (Math.hypot(p.x - px, p.z - pz) > BODY_RANGE) return;
+        const m = bodyMeshes[p.fem ? 1 : 0], j = cnt[p.fem ? 1 : 0]++;
+        o.position.set(K_CX + p.x, Y + bob * s, K_CZ + p.z); o.rotation.set(sway * (p.kind <= 1 && !mv ? 1 : 0.3), p.yaw, mv ? sway : 0, "YXZ"); o.scale.setScalar(s);
+        o.updateMatrix(); m.setMatrixAt(j, o.matrix);
+        m.setColorAt(j, tint.set(ROLES[p.kind][0]).lerp(new THREE.Color(SKIN[p.col]), 0.25));
+        return;
+      }
       const near = Math.abs(p.x - px) < 70 && Math.abs(p.z - pz) < 70;
       const moving = near && p.mode !== 2 ? steer(p, dt, p.mode === 0 ? 1 : 0) : false;
       if (p.mode === 1 && p.sp === 0) p.sp = 0.5;
@@ -197,7 +228,13 @@ export function Population() {
       }
     });
     for (const m of Object.values(parts)) m.instanceMatrix.needsUpdate = true;
+    if (bodyMeshes) bodyMeshes.forEach((m, k) => { m.count = cnt[k]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
   });
 
-  return <>{Object.values(parts).map((m, i) => <primitive key={i} object={m} />)}</>;
+  const PEOPLE_BOXES = ["legL", "legR", "torso", "armL", "armR", "head"];
+  const shown = Object.entries(parts).filter(([k]) => !(bodyMeshes && PEOPLE_BOXES.includes(k))).map(([, m]) => m);
+  return <>
+    {shown.map((m, i) => <primitive key={i} object={m} />)}
+    {bodyMeshes?.map((m, i) => <primitive key={"b" + i} object={m} />)}
+  </>;
 }
