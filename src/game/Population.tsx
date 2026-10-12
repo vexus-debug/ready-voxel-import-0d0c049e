@@ -3,7 +3,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { mergeVertices, mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import maleAsset from "@/assets/male.glb.asset.json";
 import femaleAsset from "@/assets/female.glb.asset.json";
 import * as THREE from "three";
@@ -63,7 +63,6 @@ function loadBody(url): Promise<THREE.BufferGeometry> {
 
 export function Population() {
   const [bodies, setBodies] = useState<THREE.BufferGeometry[] | null>(null);
-  useEffect(() => { Promise.all([loadBody(maleAsset.url), loadBody(femaleAsset.url)]).then(setBodies).catch((e) => console.warn("body models failed", e)); }, []);
   const g = getGame();
   const Y = g.world.kingdomGround() + 1;
   const rand = (() => { let i = 1; return () => hash2(i++, 77, g.world.seed ?? 1); })();
@@ -102,12 +101,38 @@ export function Population() {
   }, []);
 
   const parts = useMemo(() => {
-    const mk = (n, w, h, d, y = 0) => { const geo = new THREE.BoxGeometry(w, h, d); geo.translate(0, y, 0); const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), n); m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); return m; };
+    const inst = (geo, n) => { const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), n); m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); return m; };
+    const mk = (n, w, h, d, y = 0) => { const geo = new THREE.BoxGeometry(w, h, d); geo.translate(0, y, 0); return inst(geo, n); };
     const P = people.length, A = animals.length, C = carts.length;
+    // Shaped humanoid parts (inspired by the uploaded models)
+    const leg = new THREE.CapsuleGeometry(0.08, 0.6, 4, 8); leg.translate(0, -0.37, 0);
+    const torso = new THREE.CylinderGeometry(0.23, 0.17, 0.64, 10); torso.scale(1, 1, 0.62);
+    const shoulders = new THREE.SphereGeometry(0.23, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); shoulders.scale(1, 0.35, 0.62); shoulders.translate(0, 0.32, 0);
+    const torsoG = mergeGeometries([torso.toNonIndexed(), shoulders.toNonIndexed()]);
+    const arm = new THREE.CapsuleGeometry(0.06, 0.48, 4, 8); arm.translate(0, -0.3, 0);
+    const hand = new THREE.SphereGeometry(0.065, 8, 6); hand.translate(0, -0.6, 0);
+    const boot = new THREE.BoxGeometry(0.17, 0.12, 0.28); boot.translate(0, -0.7, 0.04);
+    const head = new THREE.SphereGeometry(0.155, 14, 12); head.scale(0.95, 1.1, 1);
+    const neck = new THREE.CylinderGeometry(0.06, 0.07, 0.12, 8); neck.translate(0, -0.18, 0);
+    const headG = mergeGeometries([head.toNonIndexed(), neck.toNonIndexed()]);
+    const eyeL = new THREE.SphereGeometry(0.024, 6, 5); eyeL.translate(-0.055, 0.02, 0.14);
+    const eyeR = new THREE.SphereGeometry(0.024, 6, 5); eyeR.translate(0.055, 0.02, 0.14);
+    const browL = new THREE.BoxGeometry(0.06, 0.012, 0.02); browL.translate(-0.055, 0.065, 0.145);
+    const browR = new THREE.BoxGeometry(0.06, 0.012, 0.02); browR.translate(0.055, 0.065, 0.145);
+    const mouth = new THREE.BoxGeometry(0.06, 0.012, 0.02); mouth.translate(0, -0.075, 0.14);
+    const face = mergeGeometries([eyeL, eyeR, browL, browR, mouth].map((x) => x.toNonIndexed()));
+    const nose = new THREE.ConeGeometry(0.025, 0.06, 6); nose.rotateX(Math.PI / 2); nose.translate(0, -0.02, 0.165);
+    const hair = new THREE.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.5); hair.scale(0.98, 1.05, 1.05); hair.translate(0, 0.025, -0.012);
+    const hairLong = new THREE.CylinderGeometry(0.15, 0.17, 0.38, 10, 1, true, Math.PI / 2, Math.PI); hairLong.translate(0, -0.12, -0.02);
+    const skirt = new THREE.CylinderGeometry(0.19, 0.33, 0.6, 12); skirt.translate(0, -0.3, 0);
+    const belt = new THREE.CylinderGeometry(0.18, 0.18, 0.06, 10); belt.scale(1, 1, 0.65);
+    const brim = new THREE.CylinderGeometry(0.25, 0.25, 0.025, 14); const crown = new THREE.CylinderGeometry(0.15, 0.17, 0.14, 12); crown.translate(0, 0.08, 0);
+    const hatG = mergeGeometries([brim.toNonIndexed(), crown.toNonIndexed()]);
     return {
-      legL: mk(P, 0.17, 0.75, 0.2, -0.375), legR: mk(P, 0.17, 0.75, 0.2, -0.375),
-      torso: mk(P, 0.46, 0.68, 0.26), armL: mk(P, 0.13, 0.62, 0.15, -0.31), armR: mk(P, 0.13, 0.62, 0.15, -0.31),
-      head: mk(P, 0.3, 0.32, 0.3), hat: mk(P, 0.42, 0.1, 0.42),
+      legL: inst(leg, P), legR: inst(leg, P), bootL: inst(boot, P), bootR: inst(boot, P),
+      torso: inst(torsoG, P), belt: inst(belt, P), skirt: inst(skirt, P),
+      armL: inst(arm, P), armR: inst(arm, P), handL: inst(hand, P), handR: inst(hand, P),
+      head: inst(headG, P), face: inst(face, P), nose: inst(nose, P), hair: inst(hair, P), hairLong: inst(hairLong, P), hat: inst(hatG, P),
       aBody: mk(A + C, 1, 1, 1), aHead: mk(A + C, 1, 1, 1), aLegs: mk(A + C, 1, 1, 1, -0.5),
       bed: mk(C, 1.4, 0.5, 2.2), wheel: mk(C * 2, 0.15, 0.9, 0.9), load: mk(C, 1.1, 0.6, 1.6),
     };
@@ -115,11 +140,23 @@ export function Population() {
 
   useMemo(() => {
     const c = new THREE.Color();
+    const HAIR = ["#2a1a10", "#4a2c18", "#6b4423", "#a0703a", "#d8b46a", "#8a3a1a", "#1a1a1a", "#9a9a9a"];
     people.forEach((p, i) => {
       const r = ROLES[p.kind];
-      parts.torso.setColorAt(i, c.set(r[0])); parts.armL.setColorAt(i, c.set(r[0])); parts.armR.setColorAt(i, c.set(r[0]));
+      const shirt = p.kind === 0 ? "#5a3a24" : r[0];
+      parts.torso.setColorAt(i, c.set(p.kind === 1 ? "#f2eee4" : shirt));
+      const sleeve = p.kind === 0 ? SKIN[p.col] : p.kind === 1 ? "#f2eee4" : r[0];
+      parts.armL.setColorAt(i, c.set(sleeve)); parts.armR.setColorAt(i, c.set(sleeve));
+      parts.handL.setColorAt(i, c.set(SKIN[p.col])); parts.handR.setColorAt(i, c.set(SKIN[p.col]));
       parts.legL.setColorAt(i, c.set(r[1])); parts.legR.setColorAt(i, c.set(r[1]));
-      parts.head.setColorAt(i, c.set(SKIN[p.col])); parts.hat.setColorAt(i, c.set(r[2] ?? "#3a2a1c"));
+      parts.bootL.setColorAt(i, c.set(p.kind === 3 ? "#55595e" : "#2a1c12")); parts.bootR.setColorAt(i, c.set(p.kind === 3 ? "#55595e" : "#2a1c12"));
+      parts.skirt.setColorAt(i, c.set(p.kind === 4 ? "#1d1d1d" : r[1] === r[0] ? r[1] : r[0]));
+      parts.belt.setColorAt(i, c.set(p.kind === 9 ? "#c8a040" : "#3a2414"));
+      parts.head.setColorAt(i, c.set(SKIN[p.col])); parts.nose.setColorAt(i, c.set(SKIN[p.col]).multiplyScalar(0.92));
+      parts.face.setColorAt(i, c.set("#1a1210"));
+      const hc = HAIR[Math.floor(hash2(i, 9, 3) * HAIR.length)];
+      parts.hair.setColorAt(i, c.set(hc)); parts.hairLong.setColorAt(i, c.set(hc));
+      parts.hat.setColorAt(i, c.set(r[2] ?? "#3a2a1c"));
     });
     const all = [...animals.map((a) => a.kind), ...carts.map(() => 0)];
     all.forEach((k, i) => { const a = ANIMALS[k]; parts.aBody.setColorAt(i, c.set(a[0])); parts.aHead.setColorAt(i, c.set(a[1])); parts.aLegs.setColorAt(i, c.set(a[1])); });
@@ -195,11 +232,21 @@ export function Population() {
       const s = p.s, hip = 0.75 * s;
       const base = (yOff, xOff, zOff) => { o.position.set(K_CX + p.x + Math.cos(p.yaw) * xOff * s, Y + yOff * s, K_CZ + p.z - Math.sin(p.yaw) * xOff * s); o.rotation.set(0, p.yaw, 0); o.scale.setScalar(s); };
       const put = (m, yOff, xOff, rx) => { base(yOff, xOff, 0); o.rotateX(rx); o.updateMatrix(); m.setMatrixAt(i, o.matrix); };
-      put(parts.legL, 0.75, -0.1, sw); put(parts.legR, 0.75, 0.1, -sw);
-      put(parts.torso, 1.09, 0, 0);
-      put(parts.armL, 1.4, -0.3, -sw * (p.kind <= 1 ? 1 : 0.8)); put(parts.armR, 1.4, 0.3, p.kind <= 1 ? sw : sw * 0.8);
-      put(parts.head, 1.6, 0, 0);
-      if (ROLES[p.kind][2]) put(parts.hat, 1.8, 0, 0); else { o.scale.setScalar(0); o.updateMatrix(); parts.hat.setMatrixAt(i, o.matrix); }
+      const sk = p.fem ? 0 : 1, sw2 = sw * (p.fem ? 0.6 : 1);
+      const hide = (m) => { o.scale.setScalar(0); o.updateMatrix(); m.setMatrixAt(i, o.matrix); };
+      put(parts.legL, 0.75, -0.1, sw2); put(parts.legR, 0.75, 0.1, -sw2);
+      put(parts.bootL, 0.75, -0.1, sw2); put(parts.bootR, 0.75, 0.1, -sw2);
+      const bob = moving ? Math.abs(Math.cos(t.current * 7 * (p.sp / 1.1 + 0.3) + p.phase)) * 0.04 : 0;
+      put(parts.torso, 1.09 + bob, 0, 0);
+      put(parts.belt, 0.8 + bob, 0, 0);
+      if (p.fem) put(parts.skirt, 0.85 + bob, 0, 0); else hide(parts.skirt);
+      const aL = -sw * (p.kind <= 1 ? 1 : 0.8), aR = p.kind <= 1 ? sw : sw * 0.8;
+      put(parts.armL, 1.38 + bob, -0.27, aL); put(parts.armR, 1.38 + bob, 0.27, aR);
+      put(parts.handL, 1.38 + bob, -0.27, aL); put(parts.handR, 1.38 + bob, 0.27, aR);
+      for (const m of [parts.head, parts.face, parts.nose, parts.hair]) put(m, 1.62 + bob, 0, 0);
+      if (p.fem) put(parts.hairLong, 1.62 + bob, 0, 0); else hide(parts.hairLong);
+      if (ROLES[p.kind][2]) put(parts.hat, 1.8 + bob, 0, 0); else hide(parts.hat);
+      void sk;
       void hip;
     });
     const animalPut = (i, kind, x, z, yaw, moving, ph) => {
@@ -231,7 +278,7 @@ export function Population() {
     if (bodyMeshes) bodyMeshes.forEach((m, k) => { m.count = cnt[k]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
   });
 
-  const PEOPLE_BOXES = ["legL", "legR", "torso", "armL", "armR", "head"];
+  const PEOPLE_BOXES: string[] = [];
   const shown = Object.entries(parts).filter(([k]) => !(bodyMeshes && PEOPLE_BOXES.includes(k))).map(([, m]) => m);
   return <>
     {shown.map((m, i) => <primitive key={i} object={m} />)}
