@@ -1,7 +1,11 @@
 // @ts-nocheck
 // Kingdom population: townsfolk with roles, livestock, horse-drawn carts. Instanced for performance.
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import maleAsset from "@/assets/male.glb.asset.json";
+import femaleAsset from "@/assets/female.glb.asset.json";
 import * as THREE from "three";
 import { getGame } from "./state";
 import { K_CX, K_CZ, hash2 } from "./world";
@@ -37,7 +41,29 @@ const ANIMALS = [
 
 type Agent = { x: number; z: number; tx: number; tz: number; yaw: number; sp: number; kind: number; mode: number; ax: number; az: number; r: number; wait: number; phase: number; s: number; col: number };
 
+// Load a Blender-exported half body (mirror modifier unapplied), mirror it, convert Z-up to Y-up, normalize to 1.8 tall with feet at y=0.
+function loadBody(url): Promise<THREE.BufferGeometry> {
+  return new GLTFLoader().loadAsync(url).then((gl) => {
+    let geo: THREE.BufferGeometry = null;
+    gl.scene.updateMatrixWorld(true);
+    gl.scene.traverse((o: any) => { if (o.isMesh && !geo) { geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); } });
+    geo = geo.index ? geo.toNonIndexed() : geo;
+    geo.deleteAttribute("normal");
+    const pos = geo.getAttribute("position").array as Float32Array, n = pos.length;
+    const out = new Float32Array(n * 2); out.set(pos);
+    for (let i = 0; i < n; i += 9) for (let v = 0; v < 3; v++) { const src = i + (2 - v) * 3, dst = n + i + v * 3; out[dst] = -pos[src]; out[dst + 1] = pos[src + 1]; out[dst + 2] = pos[src + 2]; }
+    let g2 = new THREE.BufferGeometry(); g2.setAttribute("position", new THREE.BufferAttribute(out, 3));
+    g2 = mergeVertices(g2, 1e-4);
+    g2.computeBoundingBox(); const b = g2.boundingBox, h = b.max.y - b.min.y, k = 1.8 / h;
+    g2.translate(-(b.max.x + b.min.x) / 2, -b.min.y, -(b.max.z + b.min.z) / 2); g2.scale(k, k, k);
+    g2.computeVertexNormals();
+    return g2;
+  });
+}
+
 export function Population() {
+  const [bodies, setBodies] = useState<THREE.BufferGeometry[] | null>(null);
+  useEffect(() => { Promise.all([loadBody(maleAsset.url), loadBody(femaleAsset.url)]).then(setBodies).catch((e) => console.warn("body models failed", e)); }, []);
   const g = getGame();
   const Y = g.world.kingdomGround() + 1;
   const rand = (() => { let i = 1; return () => hash2(i++, 77, g.world.seed ?? 1); })();
@@ -50,7 +76,7 @@ export function Population() {
 
   const { people, animals, carts } = useMemo(() => {
     const people: Agent[] = [];
-    const add = (kind, x, z, mode, r = 0) => people.push({ x, z, tx: x, tz: z, yaw: rand() * 6.28, sp: ROLES[kind][3] || 0.5, kind, mode, ax: x, az: z, r, wait: rand() * 3, phase: rand() * 6, s: kind === 8 ? 0.65 : 0.92 + rand() * 0.12, col: Math.floor(rand() * 4) });
+    const add = (kind, x, z, mode, r = 0) => people.push({ x, z, tx: x, tz: z, yaw: rand() * 6.28, sp: ROLES[kind][3] || 0.5, kind, mode, ax: x, az: z, r, wait: rand() * 3, phase: rand() * 6, s: kind === 8 ? 0.65 : 0.92 + rand() * 0.12, col: Math.floor(rand() * 4), fem: kind === 6 || (kind !== 3 && kind !== 0 && kind !== 4 && kind !== 7 && rand() < 0.45) });
     for (const [u, v] of SMITHS) for (let i = 0; i < 3; i++) add(0, u - 3 + i * 2, v - 3, 1, 2);
     for (const [u, v] of BAKERS) for (let i = 0; i < 2; i++) add(1, u + i * 2, v, 1, 2);
     for (const [u, v] of STALLS) for (let i = 0; i < 6; i++) add(2, u - 6 + (i % 3) * 5, v + (i < 3 ? -4 : 5), 1, 1);
