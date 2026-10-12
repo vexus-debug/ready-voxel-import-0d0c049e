@@ -10,6 +10,7 @@ import { HUD } from "./HUD";
 import { touch, isTouchDevice } from "./touch";
 import { TouchControls } from "./TouchControls";
 import { useUI } from "./state";
+import { Population } from "./Population";
 
 const RADIUS = isTouchDevice() ? 3 : 4;
 const SHADOW_RES = isTouchDevice() ? 1024 : 2048;
@@ -639,6 +640,7 @@ function Scene() {
       <Sky />
       <Clouds />
       <Chunks material={material} />
+      <Population />
       <Player zt={zt} />
       <Zombies target={zt} />
     </>
