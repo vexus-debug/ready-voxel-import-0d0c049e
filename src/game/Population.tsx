@@ -1,7 +1,11 @@
 // @ts-nocheck
 // Kingdom population: townsfolk with roles, livestock, horse-drawn carts. Instanced for performance.
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import maleAsset from "@/assets/male.glb.asset.json";
+import femaleAsset from "@/assets/female.glb.asset.json";
 import * as THREE from "three";
 import { getGame } from "./state";
 import { K_CX, K_CZ, hash2 } from "./world";
@@ -37,7 +41,29 @@ const ANIMALS = [
 
 type Agent = { x: number; z: number; tx: number; tz: number; yaw: number; sp: number; kind: number; mode: number; ax: number; az: number; r: number; wait: number; phase: number; s: number; col: number };
 
+// Load a Blender-exported half body (mirror modifier unapplied), mirror it, convert Z-up to Y-up, normalize to 1.8 tall with feet at y=0.
+function loadBody(url): Promise<THREE.BufferGeometry> {
+  return new GLTFLoader().loadAsync(url).then((gl) => {
+    let geo: THREE.BufferGeometry = null;
+    gl.scene.updateMatrixWorld(true);
+    gl.scene.traverse((o: any) => { if (o.isMesh && !geo) { geo = o.geometry.clone(); geo.applyMatrix4(o.matrixWorld); } });
+    geo = geo.index ? geo.toNonIndexed() : geo;
+    geo.deleteAttribute("normal");
+    const pos = geo.getAttribute("position").array as Float32Array, n = pos.length;
+    const out = new Float32Array(n * 2); out.set(pos);
+    for (let i = 0; i < n; i += 9) for (let v = 0; v < 3; v++) { const src = i + (2 - v) * 3, dst = n + i + v * 3; out[dst] = -pos[src]; out[dst + 1] = pos[src + 1]; out[dst + 2] = pos[src + 2]; }
+    let g2 = new THREE.BufferGeometry(); g2.setAttribute("position", new THREE.BufferAttribute(out, 3));
+    g2 = mergeVertices(g2, 1e-4);
+    g2.computeBoundingBox(); const b = g2.boundingBox, h = b.max.y - b.min.y, k = 1.8 / h;
+    g2.translate(-(b.max.x + b.min.x) / 2, -b.min.y, -(b.max.z + b.min.z) / 2); g2.scale(k, k, k);
+    g2.computeVertexNormals();
+    return g2;
+  });
+}
+
 export function Population() {
+  const [bodies, setBodies] = useState<THREE.BufferGeometry[] | null>(null);
+  useEffect(() => { Promise.all([loadBody(maleAsset.url), loadBody(femaleAsset.url)]).then(setBodies).catch((e) => console.warn("body models failed", e)); }, []);
   const g = getGame();
   const Y = g.world.kingdomGround() + 1;
   const rand = (() => { let i = 1; return () => hash2(i++, 77, g.world.seed ?? 1); })();
@@ -50,7 +76,7 @@ export function Population() {
 
   const { people, animals, carts } = useMemo(() => {
     const people: Agent[] = [];
-    const add = (kind, x, z, mode, r = 0) => people.push({ x, z, tx: x, tz: z, yaw: rand() * 6.28, sp: ROLES[kind][3] || 0.5, kind, mode, ax: x, az: z, r, wait: rand() * 3, phase: rand() * 6, s: kind === 8 ? 0.65 : 0.92 + rand() * 0.12, col: Math.floor(rand() * 4) });
+    const add = (kind, x, z, mode, r = 0) => people.push({ x, z, tx: x, tz: z, yaw: rand() * 6.28, sp: ROLES[kind][3] || 0.5, kind, mode, ax: x, az: z, r, wait: rand() * 3, phase: rand() * 6, s: kind === 8 ? 0.65 : 0.92 + rand() * 0.12, col: Math.floor(rand() * 4), fem: kind === 6 || (kind !== 3 && kind !== 0 && kind !== 4 && kind !== 7 && rand() < 0.45) });
     for (const [u, v] of SMITHS) for (let i = 0; i < 3; i++) add(0, u - 3 + i * 2, v - 3, 1, 2);
     for (const [u, v] of BAKERS) for (let i = 0; i < 2; i++) add(1, u + i * 2, v, 1, 2);
     for (const [u, v] of STALLS) for (let i = 0; i < 6; i++) add(2, u - 6 + (i % 3) * 5, v + (i < 3 ? -4 : 5), 1, 1);
@@ -100,6 +126,17 @@ export function Population() {
     carts.forEach((ct, i) => { parts.bed.setColorAt(i, c.set("#7a5634")); parts.load.setColorAt(i, c.set(["#c8a25a", "#8a6a3a", "#e0d8c0"][ct.kind])); parts.wheel.setColorAt(i * 2, c.set("#3a2a1c")); parts.wheel.setColorAt(i * 2 + 1, c.set("#3a2a1c")); });
   }, []);
 
+  const BODY_RANGE = 48;
+  const bodyMeshes = useMemo(() => {
+    if (!bodies) return null;
+    return bodies.map((geo) => {
+      const m = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial(), people.length);
+      m.castShadow = true; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.count = 0;
+      m.setColorAt(0, new THREE.Color()); return m;
+    });
+  }, [bodies]);
+  const tint = useMemo(() => new THREE.Color(), []);
+
   const o = useMemo(() => new THREE.Object3D(), []);
   const q = useMemo(() => new THREE.Object3D(), []);
   const t = useRef(0);
@@ -130,7 +167,27 @@ export function Population() {
   useFrame((_, raw) => {
     const dt = Math.min(raw, 0.05); t.current += dt;
     const px = g.pos.x - K_CX, pz = g.pos.z - K_CZ;
+    const cnt = [0, 0];
     people.forEach((p, i) => {
+      if (bodyMeshes) {
+        const nearB = Math.abs(p.x - px) < 70 && Math.abs(p.z - pz) < 70;
+        const mv = nearB && p.mode !== 2 ? steer(p, dt, p.mode === 0 ? 1 : 0) : false;
+        if (p.mode === 1 && p.sp === 0) p.sp = 0.5;
+        const ph = t.current * 7 * (p.sp / 1.1 + 0.3) + p.phase;
+        const bob = mv ? Math.abs(Math.sin(ph)) * 0.06 : Math.sin(t.current * 1.6 + p.phase) * 0.01;
+        const sway = mv ? Math.sin(ph) * 0.06 : p.kind <= 1 ? Math.max(0, Math.sin(t.current * 4 + p.phase)) * 0.12 : 0;
+        const s = p.s;
+        // hat (all roles that wear one)
+        if (ROLES[p.kind][2] && Math.hypot(p.x - px, p.z - pz) < BODY_RANGE) { o.position.set(K_CX + p.x, Y + (1.78 + bob) * s, K_CZ + p.z); o.rotation.set(0, p.yaw, 0); o.scale.set(s * 0.75, s, s * 0.75); }
+        else o.scale.setScalar(0);
+        o.updateMatrix(); parts.hat.setMatrixAt(i, o.matrix);
+        if (Math.hypot(p.x - px, p.z - pz) > BODY_RANGE) return;
+        const m = bodyMeshes[p.fem ? 1 : 0], j = cnt[p.fem ? 1 : 0]++;
+        o.position.set(K_CX + p.x, Y + bob * s, K_CZ + p.z); o.rotation.set(sway * (p.kind <= 1 && !mv ? 1 : 0.3), p.yaw, mv ? sway : 0, "YXZ"); o.scale.setScalar(s);
+        o.updateMatrix(); m.setMatrixAt(j, o.matrix);
+        m.setColorAt(j, tint.set(ROLES[p.kind][0]).lerp(new THREE.Color(SKIN[p.col]), 0.25));
+        return;
+      }
       const near = Math.abs(p.x - px) < 70 && Math.abs(p.z - pz) < 70;
       const moving = near && p.mode !== 2 ? steer(p, dt, p.mode === 0 ? 1 : 0) : false;
       if (p.mode === 1 && p.sp === 0) p.sp = 0.5;
@@ -171,7 +228,13 @@ export function Population() {
       }
     });
     for (const m of Object.values(parts)) m.instanceMatrix.needsUpdate = true;
+    if (bodyMeshes) bodyMeshes.forEach((m, k) => { m.count = cnt[k]; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
   });
 
-  return <>{Object.values(parts).map((m, i) => <primitive key={i} object={m} />)}</>;
+  const PEOPLE_BOXES = ["legL", "legR", "torso", "armL", "armR", "head"];
+  const shown = Object.entries(parts).filter(([k]) => !(bodyMeshes && PEOPLE_BOXES.includes(k))).map(([, m]) => m);
+  return <>
+    {shown.map((m, i) => <primitive key={i} object={m} />)}
+    {bodyMeshes?.map((m, i) => <primitive key={"b" + i} object={m} />)}
+  </>;
 }
