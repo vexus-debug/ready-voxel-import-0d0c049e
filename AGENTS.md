@@ -13,3 +13,4 @@
 - Keep TanStack development source annotations out of src/game, because React Three Fiber forwards DOM-style JSX attributes to Three.js objects and crashes on unknown properties.
 - On portrait screens the game frame is rotated 90deg (useViewport + LandscapeFix in Game.tsx) so play is always landscape; TouchControls must remap pointer coordinates into the rotated local space (local x = page y, local y = pageWidth - page x) to stay in sync with that frame transform.
 
+- The modern metropolis lives in src/game/city.ts (grid built once, stamped per chunk like town.ts) far east of the kingdom; it must not import values from world.ts at module scope because world.ts imports it (circular init).
