@@ -15,7 +15,7 @@ const K_OUT = K_HALF + 12; // flat apron outside the wall
 const K_FADE = 28; // blend back into natural terrain
 // modern metropolis, far east of the kingdom
 export const M_CX = K_CX + 360, M_CZ = 40;
-const M_OUT = C_R + 4, M_FADE = 36;
+const M_OUT = 114, M_FADE = 36; // city radius (C_R=110) + apron
 
 export function hash2(x: number, z: number, seed: number) {
   let h = Math.imul(x, 374761393) + Math.imul(z, 668265263) + Math.imul(seed, 982451653);
