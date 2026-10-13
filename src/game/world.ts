@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { CASTLE_DATA, CASTLE_SIZE } from "./castleData";
 import { buildTown, townAt, T_R, T_Y, AIRV } from "./town";
+import { buildCity, cityAt, C_R, C_Y, CAIR } from "./city";
 import { B, BLOCKS, ATLAS_COLS, isTransparent, isPassable, isNatural, isPlant } from "./blocks";
 
 export const CH = 16;
@@ -12,6 +13,9 @@ export const WATER_LEVEL = 15;
 export const K_CX = 24 + 14, K_CZ = 0, K_HALF = 100, WALL_T = 3;
 const K_OUT = K_HALF + 12; // flat apron outside the wall
 const K_FADE = 28; // blend back into natural terrain
+// modern metropolis, far east of the kingdom
+export const M_CX = K_CX + 360, M_CZ = 40;
+const M_OUT = 114, M_FADE = 36; // city radius (C_R=110) + apron
 
 export function hash2(x: number, z: number, seed: number) {
   let h = Math.imul(x, 374761393) + Math.imul(z, 668265263) + Math.imul(seed, 982451653);
@@ -191,10 +195,44 @@ export class World {
         const s = t * t * (3 - 2 * t);
         v = Math.round(v + (G - v) * s);
       }
+      const md = this.cityDist(x, z);
+      if (md < M_OUT + M_FADE) {
+        const G = this.cityGround();
+        const t = md <= M_OUT ? 1 : 1 - (md - M_OUT) / M_FADE;
+        const s = t * t * (3 - 2 * t);
+        v = Math.round(v + (G - v) * s);
+      }
       if (this.hcache.size > 400000) this.hcache.clear();
       this.hcache.set(key, v);
     }
     return v;
+  }
+
+  // ---- Modern metropolis ----
+  cityDist(x: number, z: number) { return Math.max(Math.abs(x - M_CX), Math.abs(z - M_CZ)); }
+  private mBase: number | null = null;
+  cityGround() {
+    if (this.mBase !== null) return this.mBase;
+    let sum = 0, n = 0;
+    for (let z = -C_R; z <= C_R; z += 10) for (let x = -C_R; x <= C_R; x += 10) { sum += this.computeHeight(M_CX + x, M_CZ + z); n++; }
+    return (this.mBase = Math.max(WATER_LEVEL + 3, Math.min(H - C_Y - 3, Math.round(sum / n))));
+  }
+  private city: Uint8Array | null = null;
+  private stampCity(cx: number, cz: number, c: Uint8Array) {
+    const x0 = cx * CH, z0 = cz * CH;
+    if (x0 + CH < M_CX - C_R || x0 > M_CX + C_R || z0 + CH < M_CZ - C_R || z0 > M_CZ + C_R) return;
+    if (!this.city) this.city = buildCity(this.seed);
+    const G = this.cityGround();
+    for (let lz = 0; lz < CH; lz++)
+      for (let lx = 0; lx < CH; lx++) {
+        const u = x0 + lx - M_CX, v = z0 + lz - M_CZ;
+        if (u < -C_R || u > C_R || v < -C_R || v > C_R) continue;
+        for (let y = 1; y < G; y++) if (c[idx(lx, y, lz)] === 0 || c[idx(lx, y, lz)] === B.WATER) c[idx(lx, y, lz)] = B.STONE;
+        for (let h = 0; h < C_Y && G + h < H; h++) {
+          const t = cityAt(this.city, u, h, v);
+          if (t) c[idx(lx, G + h, lz)] = t === CAIR ? 0 : t;
+        }
+      }
   }
   /** 0 = desert, 1 = rainforest, in between = savanna (smooth weights) */
   biome(x: number, z: number) {
@@ -431,6 +469,7 @@ export class World {
     this.stampCastle(cx, cz, c);
     this.stampKingdomWall(cx, cz, c);
     this.stampTown(cx, cz, c);
+    this.stampCity(cx, cz, c);
     const e = this.edits[chunkKey(cx, cz)];
     if (e) for (const k in e) c[+k] = e[k];
     return c;

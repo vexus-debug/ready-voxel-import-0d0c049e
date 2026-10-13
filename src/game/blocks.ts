@@ -28,6 +28,11 @@ export const B = {
   DOOR: 24,
   PLASTER: 25,
   THATCH: 26,
+  ASPHALT: 27,
+  CONCRETE: 28,
+  OFFICE_WINDOW: 29,
+  STEEL: 30,
+  ROAD_LINE: 31,
 } as const;
 
 export type Tool = "pickaxe" | "axe" | "shovel";
@@ -68,6 +73,11 @@ export const BLOCKS: Record<number, BlockDef> = {
   [B.PLASTER]: { name: "Lime Plaster", hardness: 1.5, tool: "pickaxe", tiles: [29, 29, 29], drop: B.PLASTER },
   [B.THATCH]: { name: "Straw Thatch", hardness: 0.6, tool: null, tiles: [30, 30, 30], drop: B.THATCH },
   [B.FERN]: { name: "Fern", hardness: 0.05, tool: null, tiles: [23, 23, 23], drop: 0, transparent: true },
+  [B.ASPHALT]: { name: "Asphalt", hardness: 3, tool: "pickaxe", tiles: [31, 31, 31], drop: B.ASPHALT },
+  [B.CONCRETE]: { name: "Concrete", hardness: 4, tool: "pickaxe", tiles: [32, 32, 32], drop: B.CONCRETE },
+  [B.OFFICE_WINDOW]: { name: "Office Window", hardness: 0.6, tool: null, tiles: [33, 33, 33], drop: 0 },
+  [B.STEEL]: { name: "Steel Panel", hardness: 6, tool: "pickaxe", tiles: [34, 34, 34], drop: B.STEEL },
+  [B.ROAD_LINE]: { name: "Road Marking", hardness: 3, tool: "pickaxe", tiles: [35, 35, 35], drop: B.ASPHALT },
 };
 
 export type Item =
@@ -363,6 +373,38 @@ export function drawAtlas(): HTMLCanvasElement {
     let col = mix([150, 116, 56], [210, 176, 98], streak);
     if (fv > 0.86) col = mul(col, 0.6);
     return mul(col, 0.9 + (n - 0.5) * 0.15);
+  });
+  // ---------- modern city tiles ----------
+  const asphalt = (u: number, v: number, n: number) => {
+    const g = M(u, v, 16, 2);
+    return mul([58, 58, 62], 0.85 + g * 0.3 + (n - 0.5) * 0.25);
+  };
+  put(31, asphalt);
+  // concrete slab with expansion joints
+  put(32, (u, v, n) => {
+    if (u < 0.03 || v < 0.03) return mul([140, 138, 132], 0.9 + n * 0.1);
+    const big = N(u, v, 4, 3);
+    return mul(mix([168, 166, 160], [196, 194, 188], big), 0.94 + (n - 0.5) * 0.1);
+  });
+  // office window: blue-grey reflective pane, thin frame, sky gradient highlight
+  put(33, (u, v, n) => {
+    if (Math.min(u, v, 1 - u, 1 - v) < 0.06) return mul([70, 76, 84], 0.95 + n * 0.1);
+    let col = mix([150, 190, 220], [52, 78, 110], v);
+    if (Math.abs(u - v - 0.1) < 0.08) col = mix(col, [230, 240, 250], 0.45); // reflection streak
+    if (N(u, v, 2, 2) > 0.62) col = mix(col, [255, 214, 140], 0.35); // lit office
+    return mul(col, 0.96 + (n - 0.5) * 0.06);
+  });
+  // brushed steel cladding
+  put(34, (u, v, n) => {
+    const streak = M(u * 0.2, v * 3, 16, 2);
+    let col = mix([96, 102, 110], [140, 146, 154], streak);
+    if (u < 0.04 || u > 0.96) col = mul(col, 0.7);
+    return mul(col, 0.95 + (n - 0.5) * 0.08);
+  });
+  // asphalt with painted white marking
+  put(35, (u, v, n) => {
+    if (Math.abs(u - 0.5) < 0.3) return mul([232, 230, 220], 0.92 + n * 0.08);
+    return asphalt(u, v, n);
   });
   ctx.putImageData(img, 0, 0);
   return c;
