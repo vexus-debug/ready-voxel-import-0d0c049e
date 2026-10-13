@@ -3,6 +3,7 @@
 import * as THREE from "three";
 import { CASTLE_DATA, CASTLE_SIZE } from "./castleData";
 import { buildTown, townAt, T_R, T_Y, AIRV } from "./town";
+import { buildCity, cityAt, C_R, C_Y, CAIR } from "./city";
 import { B, BLOCKS, ATLAS_COLS, isTransparent, isPassable, isNatural, isPlant } from "./blocks";
 
 export const CH = 16;
@@ -12,6 +13,9 @@ export const WATER_LEVEL = 15;
 export const K_CX = 24 + 14, K_CZ = 0, K_HALF = 100, WALL_T = 3;
 const K_OUT = K_HALF + 12; // flat apron outside the wall
 const K_FADE = 28; // blend back into natural terrain
+// modern metropolis, far east of the kingdom
+export const M_CX = K_CX + 360, M_CZ = 40;
+const M_OUT = C_R + 4, M_FADE = 36;
 
 export function hash2(x: number, z: number, seed: number) {
   let h = Math.imul(x, 374761393) + Math.imul(z, 668265263) + Math.imul(seed, 982451653);
