@@ -469,6 +469,7 @@ export class World {
     this.stampCastle(cx, cz, c);
     this.stampKingdomWall(cx, cz, c);
     this.stampTown(cx, cz, c);
+    this.stampCity(cx, cz, c);
     const e = this.edits[chunkKey(cx, cz)];
     if (e) for (const k in e) c[+k] = e[k];
     return c;
