@@ -195,10 +195,44 @@ export class World {
         const s = t * t * (3 - 2 * t);
         v = Math.round(v + (G - v) * s);
       }
+      const md = this.cityDist(x, z);
+      if (md < M_OUT + M_FADE) {
+        const G = this.cityGround();
+        const t = md <= M_OUT ? 1 : 1 - (md - M_OUT) / M_FADE;
+        const s = t * t * (3 - 2 * t);
+        v = Math.round(v + (G - v) * s);
+      }
       if (this.hcache.size > 400000) this.hcache.clear();
       this.hcache.set(key, v);
     }
     return v;
+  }
+
+  // ---- Modern metropolis ----
+  cityDist(x: number, z: number) { return Math.max(Math.abs(x - M_CX), Math.abs(z - M_CZ)); }
+  private mBase: number | null = null;
+  cityGround() {
+    if (this.mBase !== null) return this.mBase;
+    let sum = 0, n = 0;
+    for (let z = -C_R; z <= C_R; z += 10) for (let x = -C_R; x <= C_R; x += 10) { sum += this.computeHeight(M_CX + x, M_CZ + z); n++; }
+    return (this.mBase = Math.max(WATER_LEVEL + 3, Math.min(H - C_Y - 3, Math.round(sum / n))));
+  }
+  private city: Uint8Array | null = null;
+  private stampCity(cx: number, cz: number, c: Uint8Array) {
+    const x0 = cx * CH, z0 = cz * CH;
+    if (x0 + CH < M_CX - C_R || x0 > M_CX + C_R || z0 + CH < M_CZ - C_R || z0 > M_CZ + C_R) return;
+    if (!this.city) this.city = buildCity(this.seed);
+    const G = this.cityGround();
+    for (let lz = 0; lz < CH; lz++)
+      for (let lx = 0; lx < CH; lx++) {
+        const u = x0 + lx - M_CX, v = z0 + lz - M_CZ;
+        if (u < -C_R || u > C_R || v < -C_R || v > C_R) continue;
+        for (let y = 1; y < G; y++) if (c[idx(lx, y, lz)] === 0 || c[idx(lx, y, lz)] === B.WATER) c[idx(lx, y, lz)] = B.STONE;
+        for (let h = 0; h < C_Y && G + h < H; h++) {
+          const t = cityAt(this.city, u, h, v);
+          if (t) c[idx(lx, G + h, lz)] = t === CAIR ? 0 : t;
+        }
+      }
   }
   /** 0 = desert, 1 = rainforest, in between = savanna (smooth weights) */
   biome(x: number, z: number) {
